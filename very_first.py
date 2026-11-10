@@ -1,0 +1,125 @@
+# python -m uvicorn very_first:app --reload
+
+from fastapi import FastAPI, Form, Request, HTTPException, status, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+import pandas as pd
+import hashlib
+import os
+
+USERS_FILE = "krivousers.csv"
+
+def hash_password(password: str, salt: str = "") -> str:
+    return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+def salt_for(username: str) -> str:
+    # хэш имени как соль: у юзеров с одинаковым паролем хэши будут разные
+    return hashlib.sha256(username.encode("utf-8")).hexdigest()
+
+def _admin_row() -> pd.DataFrame:
+    return pd.DataFrame([{
+        "username": "admin",
+        "password_hash": hash_password("1111", salt_for("admin")),
+    }])
+
+def get_users() -> pd.DataFrame:
+    # файла нет / пустой / старый формат — чиним сами
+    if not os.path.exists(USERS_FILE) or os.path.getsize(USERS_FILE) == 0:
+        _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
+    try:
+        df = pd.read_csv(USERS_FILE)
+    except pd.errors.ParserError:
+        _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
+        return pd.read_csv(USERS_FILE)
+    if "password_hash" not in df.columns:  # старый CSV с колонкой password
+        _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
+        df = pd.read_csv(USERS_FILE)
+    return df
+
+def add_user(username: str, password: str) -> None:
+    row = pd.DataFrame([{
+        "username": username,
+        "password_hash": hash_password(password, salt_for(username)),
+    }])
+    header = not os.path.exists(USERS_FILE)
+    row.to_csv(USERS_FILE, mode="a", index=False, header=header, encoding="utf-8")
+
+app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+def current_user(request: Request) -> str:
+    username = request.session.get("username")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен. Вы не авторизованы.",
+        )
+    return username
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code == 403:
+        try:
+            return templates.TemplateResponse(request=request, name="403.html", status_code=403)
+        except Exception:
+            return templates.TemplateResponse(request=request, name="404.html", status_code=403)
+    return HTMLResponse(content=exc.detail, status_code=exc.status_code)
+
+@app.get("/", response_class=HTMLResponse)
+def main_page(request: Request):
+    return templates.TemplateResponse(request=request, name="based_main.html")
+
+@app.get("/home", response_class=HTMLResponse)
+def home_page(request: Request, username: str = Depends(current_user)):
+    df = get_users()
+    row = df.loc[df["username"] == username]
+    password_hash = str(row.iloc[0]["password_hash"]) if not row.empty else ""
+    return templates.TemplateResponse(
+        request=request,
+        name="home.html",
+        context={"username": username, "password_hash": password_hash},
+    )
+
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    return templates.TemplateResponse(request=request, name="register.html")
+
+@app.post("/register")
+def register(request: Request, username: str = Form(...), password: str = Form(...)):
+    df = get_users()
+    if username in df["username"].astype(str).values:
+        return templates.TemplateResponse(
+            request=request,
+            name="register.html",
+            context={"error": "Такой пользователь уже существует"},
+        )
+    add_user(username, password)
+    request.session["username"] = username
+    return RedirectResponse("/home", status_code=302)
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html")
+
+@app.post("/login")
+def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    df = get_users()
+    row = df.loc[df["username"] == username]
+    if not row.empty:
+        stored_hash = str(row.iloc[0]["password_hash"])
+        if hash_password(password, salt_for(username)) == stored_hash:
+            request.session["username"] = username
+            return RedirectResponse("/home", status_code=302)
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"error": "Неверный пароль или логин"},
+    )
+
+@app.get("/404", response_class=HTMLResponse)
+def _404_page(request: Request):
+    return templates.TemplateResponse(request=request, name="404.html")
