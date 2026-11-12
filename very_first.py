@@ -1,6 +1,6 @@
 # python -m uvicorn very_first:app --reload
-
-from fastapi import FastAPI, Form, Request, HTTPException, status, Depends
+import time
+from fastapi import FastAPI, Form, Request, HTTPException, status, Depends,File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -9,7 +9,10 @@ import pandas as pd
 import hashlib
 import os
 
+
+SESSION_LIFE = 3600
 USERS_FILE = "krivousers.csv"
+ALLOVED_PICTURE = {".png", ".jpeg", ".webp", ".jpg"}
 
 def hash_password(password: str, salt: str = "") -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
@@ -47,17 +50,22 @@ def add_user(username: str, password: str) -> None:
     row.to_csv(USERS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key")
+app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key", max_age=SESSION_LIFE, https_only=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 def current_user(request: Request) -> str:
     username = request.session.get("username")
-    if not username:
+    last_seen = request.session.get("last_seen")
+    now = time.time()
+
+    if not username or (last_seen and now - last_seen > SESSION_LIFE):
+        request.session.clear()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещен. Вы не авторизованы.",
         )
+    request.session["last_seen"] = now
     return username
 
 @app.exception_handler(HTTPException)
@@ -72,6 +80,8 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 @app.get("/", response_class=HTMLResponse)
 def main_page(request: Request):
     return templates.TemplateResponse(request=request, name="based_main.html")
+
+
 
 @app.get("/home", response_class=HTMLResponse)
 def home_page(request: Request, username: str = Depends(current_user)):
@@ -99,11 +109,14 @@ def register(request: Request, username: str = Form(...), password: str = Form(.
         )
     add_user(username, password)
     request.session["username"] = username
+    request.session["last_seen"] = time.time()
+    
     return RedirectResponse("/home", status_code=302)
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
+
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
@@ -113,6 +126,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         stored_hash = str(row.iloc[0]["password_hash"])
         if hash_password(password, salt_for(username)) == stored_hash:
             request.session["username"] = username
+            request.session["last_seen"] = time.time()
             return RedirectResponse("/home", status_code=302)
     return templates.TemplateResponse(
         request=request,
@@ -120,6 +134,12 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         context={"error": "Неверный пароль или логин"},
     )
 
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
+
 @app.get("/404", response_class=HTMLResponse)
 def _404_page(request: Request):
     return templates.TemplateResponse(request=request, name="404.html")
+
