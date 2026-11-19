@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Главная</title>
+    <title>Лента</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,16 +11,96 @@
 <input type="checkbox" id="theme" class="theme-switch">
 <label for="theme" class="theme-btn" title="Сменить тему">🌓</label>
 
-<div class="card">
-    <div class="logo">🌿</div>
-    <h2>Мой первый сайт</h2>
-    <p class="subtitle">Проект на FastAPI + Jinja2</p>
-
-    <div class="actions">
-        <a class="btn ghost" href="/login">Войти</a>
-        <a class="btn" href="/register">Регистрация</a>
+<header class="topbar">
+    <a class="brand" href="/home">🌿 МойСайт</a>
+    <nav class="topnav">
+        <a class="active" href="/home">Лента</a>
+        <a href="/">О сайте</a>
+    </nav>
+    <div class="userbox">
+        {% if avatar_url %}
+            <img class="userbox-avatar" src="{{ avatar_url }}" alt="Аватар {{ username }}">
+        {% else %}
+            <div class="userbox-avatar">{{ username[0] | upper }}</div>
+        {% endif %}
+        <span>{{ username }}</span>
+        <a class="btn ghost btn-small" href="/logout">Выйти</a>
     </div>
-</div>
+</header>
+
+<main class="feed">
+    <section class="card composer">
+        {% if error %}
+            <div class="error">⚠️ {{ error }}</div>
+        {% endif %}
+        <form method="post" action="/post" enctype="multipart/form-data" class="composer-form">
+            <textarea name="text" rows="3" maxlength="500" required
+                      placeholder="Что нового?"></textarea>
+            <label>Фото или видео <span class="optional">(необязательно)</span>
+                <input type="file" name="media"
+                       accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,.mov">
+            </label>
+            <div class="composer-actions">
+                <span class="note">Текст до 500 символов · фото до 2 МБ · видео до 50 МБ</span>
+                <button class="btn" type="submit">Опубликовать</button>
+            </div>
+        </form>
+    </section>
+
+    {% for post in posts %}
+    <article class="card post">
+        <header class="post-head">
+            {% if post.avatar_url %}
+                <img class="post-avatar" src="{{ post.avatar_url }}" alt="">
+            {% else %}
+                <div class="post-avatar">{{ post.author[0] | upper }}</div>
+            {% endif %}
+            <div class="post-meta">
+                <span class="post-author">{{ post.author }}</span>
+                <span class="post-date">{{ post.created }}</span>
+            </div>
+        </header>
+
+        <p class="post-text">{{ post.text }}</p>
+
+        {% if post.video_url %}
+            <video class="post-video" src="{{ post.video_url }}" controls preload="metadata"></video>
+        {% elif post.image_url %}
+            <img class="post-image" src="{{ post.image_url }}" alt="Фото к посту">
+        {% endif %}
+
+        {% if post.comments %}
+        <section class="comments">
+            {% for c in post.comments %}
+            <div class="comment">
+                {% if c.avatar_url %}
+                    <img class="comment-avatar" src="{{ c.avatar_url }}" alt="">
+                {% else %}
+                    <div class="comment-avatar">{{ c.author[0] | upper }}</div>
+                {% endif %}
+                <div class="comment-body">
+                    <span class="comment-author">{{ c.author }}</span>
+                    <span class="comment-date">{{ c.created }}</span>
+                    <p class="comment-text">{{ c.text }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <form method="post" action="/comment" class="comment-form">
+            <input type="hidden" name="post_id" value="{{ post.id }}">
+            <input type="text" name="text" maxlength="300" required
+                   placeholder="Написать комментарий...">
+            <button class="btn" type="submit">Отправить</button>
+        </form>
+    </article>
+    {% endfor %}
+
+    {% if not posts %}
+    <div class="card empty">Пока ни одной публикации. Стань первым!</div>
+    {% endif %}
+</main>
 
 </body>
 </html>
