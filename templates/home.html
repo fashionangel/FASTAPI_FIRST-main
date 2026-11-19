@@ -2,20 +2,25 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Главная</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="container">
-    <h2>Добро пожаловать, {{ username }}!</h2>
-    
-    <p><b>Хэшированный пароль:</b> {{ password_hash }}</p>
-    <button onclick="toggleTheme()">Сменить тему</button>
-</div> 
-<script>
-function toggleTheme() {
-    document.body.classList.toggle("dark");
-}
-</script>
+
+<input type="checkbox" id="theme" class="theme-switch">
+<label for="theme" class="theme-btn" title="Сменить тему">🌓</label>
+
+<div class="card">
+    <div class="logo">🌿</div>
+    <h2>Мой первый сайт</h2>
+    <p class="subtitle">Проект на FastAPI + Jinja2</p>
+
+    <div class="actions">
+        <a class="btn ghost" href="/login">Войти</a>
+        <a class="btn" href="/register">Регистрация</a>
+    </div>
+</div>
+
 </body>
 </html>

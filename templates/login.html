@@ -2,26 +2,38 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Авторизация</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Вход</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="container">
-    <h2>Вход</h2>
+
+<input type="checkbox" id="theme" class="theme-switch">
+<label for="theme" class="theme-btn" title="Сменить тему">🌓</label>
+
+<div class="card">
+    <div class="logo">🔐</div>
+    <h2>С возвращением!</h2>
+    <p class="subtitle">Войдите в свой аккаунт</p>
+
     {% if error %}
-        <p class="error">{{ error }}</p>
+        <div class="error">⚠️ {{ error }}</div>
     {% endif %}
-    <form method="post" action="/login">
-        <input type="text" name="username" placeholder="Логин" required><br>
-        <input type="password" name="password" placeholder="Пароль" required><br>
-        <button type="submit">Войти</button>
+
+    <form method="post" action="/login" class="form">
+        <label>Логин
+            <input type="text" name="username" required
+                   autocomplete="username" value="{{ username }}" placeholder="введите логин">
+        </label>
+        <label>Пароль
+            <input type="password" name="password" required
+                   autocomplete="current-password" placeholder="введите пароль">
+        </label>
+        <button class="btn wide" type="submit">Войти</button>
     </form>
-    <button onclick="toggleTheme()">Сменить тему</button>
+
+    <p class="hint">Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
 </div>
-<script>
-function toggleTheme() {
-    document.body.classList.toggle("dark");
-}
-</script>
+
 </body>
 </html>
