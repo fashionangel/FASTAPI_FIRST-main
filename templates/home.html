@@ -8,8 +8,9 @@
 </head>
 <body>
 
+<div class="bg-fx" aria-hidden="true"></div>
 <input type="checkbox" id="theme" class="theme-switch">
-<label for="theme" class="theme-btn" title="Сменить тему">🌓</label>
+<label for="theme" class="theme-btn" title="Сменить тему"></label>
 
 <header class="topbar">
     <a class="brand" href="/home">🌿 МойСайт</a>
@@ -36,19 +37,19 @@
         <form method="post" action="/post" enctype="multipart/form-data" class="composer-form">
             <textarea name="text" rows="3" maxlength="500" required
                       placeholder="Что нового?"></textarea>
-            <label>Фото или видео <span class="optional">(необязательно)</span>
-                <input type="file" name="media"
+            <label>Фото или видео <span class="optional">(необязательно, до 5 файлов)</span>
+                <input type="file" name="media" multiple
                        accept=".png,.jpg,.jpeg,.webp,.mp4,.webm,.mov">
             </label>
             <div class="composer-actions">
-                <span class="note">Текст до 500 символов · фото до 2 МБ · видео до 50 МБ</span>
+                <span class="note">Текст до 500 символов · фото до 2 МБ · видео до 50 МБ · не более 5 файлов</span>
                 <button class="btn" type="submit">Опубликовать</button>
             </div>
         </form>
     </section>
 
     {% for post in posts %}
-    <article class="card post">
+    <article class="card post" style="--i: {{ loop.index0 }}">
         <header class="post-head">
             {% if post.avatar_url %}
                 <img class="post-avatar" src="{{ post.avatar_url }}" alt="">
@@ -63,10 +64,29 @@
 
         <p class="post-text">{{ post.text }}</p>
 
-        {% if post.video_url %}
-            <video class="post-video" src="{{ post.video_url }}" controls preload="metadata"></video>
-        {% elif post.image_url %}
-            <img class="post-image" src="{{ post.image_url }}" alt="Фото к посту">
+        {% if post.video_urls %}
+            {% for v in post.video_urls %}
+                <video class="post-video" src="{{ v }}" controls preload="metadata"></video>
+            {% endfor %}
+        {% endif %}
+
+        {% if post.image_urls|length == 1 %}
+            <img class="post-image" src="{{ post.image_urls[0] }}" alt="Фото к посту">
+        {% elif post.image_urls %}
+            <div class="carousel">
+                <div class="carousel-track">
+                    {% for img in post.image_urls %}
+                        <img class="post-image carousel-slide" src="{{ img }}" alt="Фото к посту {{ loop.index }}">
+                    {% endfor %}
+                </div>
+                <button class="carousel-btn prev" type="button" aria-label="Предыдущее фото">&lsaquo;</button>
+                <button class="carousel-btn next" type="button" aria-label="Следующее фото">&rsaquo;</button>
+                <div class="carousel-dots">
+                    {% for img in post.image_urls %}
+                        <span class="dot"></span>
+                    {% endfor %}
+                </div>
+            </div>
         {% endif %}
 
         {% if post.comments %}
@@ -98,9 +118,54 @@
     {% endfor %}
 
     {% if not posts %}
-    <div class="card empty">Пока ни одной публикации. Стань первым!</div>
+    <div class="card empty">🪴 Пока ни одной публикации. Стань первым!</div>
     {% endif %}
 </main>
+
+<script>
+    // тема: запоминаем выбор и уважаем системную
+    (function () {
+        const t = document.getElementById('theme');
+        const saved = localStorage.getItem('theme');
+        if (saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches)) {
+            t.checked = true;
+        }
+        t.addEventListener('change', function () {
+            localStorage.setItem('theme', t.checked ? 'dark' : 'light');
+        });
+    })();
+
+    // карусели фото: кнопки, точки, свайп
+    document.querySelectorAll('.carousel').forEach(function (car) {
+        const track = car.querySelector('.carousel-track');
+        const slides = car.querySelectorAll('.carousel-slide');
+        const dots = car.querySelectorAll('.dot');
+        const prev = car.querySelector('.carousel-btn.prev');
+        const next = car.querySelector('.carousel-btn.next');
+        let index = 0;
+
+        function show(i) {
+            index = (i + slides.length) % slides.length;
+            track.style.transform = 'translateX(-' + (index * 100) + '%)';
+            dots.forEach(function (d, k) { d.classList.toggle('active', k === index); });
+        }
+
+        prev.addEventListener('click', function () { show(index - 1); });
+        next.addEventListener('click', function () { show(index + 1); });
+        dots.forEach(function (d, k) { d.addEventListener('click', function () { show(k); }); });
+
+        let startX = null;
+        car.addEventListener('pointerdown', function (e) { startX = e.clientX; });
+        car.addEventListener('pointerup', function (e) {
+            if (startX === null) return;
+            const dx = e.clientX - startX;
+            if (Math.abs(dx) > 40) show(index + (dx < 0 ? 1 : -1));
+            startX = null;
+        });
+
+        show(0);
+    });
+</script>
 
 </body>
 </html>

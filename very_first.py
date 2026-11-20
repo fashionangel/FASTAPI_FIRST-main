@@ -1,7 +1,7 @@
 import os
 import time
-import uuid  # генерация уникальных имён файлов
-import shutil  # копирование видеофайла на диск
+import uuid  
+import shutil  
 import hashlib
 from datetime import datetime
 import pandas as pd
@@ -14,28 +14,28 @@ from fastapi import FastAPI, Form, Request, HTTPException, status, Depends, File
 
 SESSION_LIFE = 3600
 USERS_FILE = "krivousers.csv"
-POSTS_FILE = "krivoposts.csv"        # публикации
-COMMENTS_FILE = "krivocomments.csv"  # комментарии
+POSTS_FILE = "krivoposts.csv"        
+COMMENTS_FILE = "krivocomments.csv"  
 ALLOVED_PICTURE = {".png", ".jpeg", ".webp", ".jpg"}
 ALLOWED_VIDEO = {".mp4", ".webm", ".mov"}
 
-# папки для картинок/видео (создаются сами)
+
 AVATAR_DIR = os.path.join("static", "avatars")
 POSTPICS_DIR = os.path.join("static", "postpics")
-MAX_AVATAR_SIZE = 2 * 1024 * 1024   # 2 МБ
-MAX_VIDEO_SIZE = 50 * 1024 * 1024   # 50 МБ
+MAX_AVATAR_SIZE = 2 * 1024 * 1024   
+MAX_VIDEO_SIZE = 50 * 1024 * 1024   
+MAX_MEDIA_PER_POST = 5             
 os.makedirs(AVATAR_DIR, exist_ok=True)
 os.makedirs(POSTPICS_DIR, exist_ok=True)
 
 
-# ==================== ПОЛЬЗОВАТЕЛИ ====================
+#ПОЛЬЗОВАТЕЛИ
 
 def hash_password(password: str, salt: str = "") -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
 
 
 def salt_for(username: str) -> str:
-    # хэш имени как соль: у юзеров с одинаковым паролем хэши разные
     return hashlib.sha256(username.encode("utf-8")).hexdigest()
 
 
@@ -48,7 +48,6 @@ def _admin_row() -> pd.DataFrame:
 
 
 def get_users() -> pd.DataFrame:
-    # файла нет / пустой / старый формат — чиним сами
     if not os.path.exists(USERS_FILE) or os.path.getsize(USERS_FILE) == 0:
         _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
     try:
@@ -56,12 +55,12 @@ def get_users() -> pd.DataFrame:
     except pd.errors.ParserError:
         _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
         return pd.read_csv(USERS_FILE)
-    if "password_hash" not in df.columns:  # старый CSV с колонкой password
+    if "password_hash" not in df.columns: 
         _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
         df = pd.read_csv(USERS_FILE)
     if "avatar" not in df.columns:
         df["avatar"] = ""
-    df["avatar"] = df["avatar"].fillna("").astype(str)  # пустые поля -> "" (не NaN!)
+    df["avatar"] = df["avatar"].fillna("").astype(str) 
     return df
 
 
@@ -75,7 +74,7 @@ def add_user(username: str, password: str, avatar: str = "") -> None:
     row.to_csv(USERS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 
-# ==================== КАРТИНКИ И ВИДЕО ====================
+#КАРТИНКИ И ВИДЕО
 
 def save_avatar(file: UploadFile, directory: str = AVATAR_DIR) -> str:
     """Сохраняет картинку (аватарку или фото к посту)."""
@@ -86,19 +85,19 @@ def save_avatar(file: UploadFile, directory: str = AVATAR_DIR) -> str:
         raise ValueError("Файл больше 2 МБ")
     try:
         im = Image.open(file.file)
-        im.verify()           # проверяем, что это правда изображение
-        file.file.seek(0)     # verify «съедает» файл — перематываем
+        im.verify()           
+        file.file.seek(0)     
         im = Image.open(file.file)
     except Exception:
         raise ValueError("Это не картинка")
-    if im.mode in ("RGBA", "LA", "P"):  # прозрачность -> белый фон, а не чёрный
+    if im.mode in ("RGBA", "LA", "P"): 
         im = im.convert("RGBA")
         bg = Image.new("RGB", im.size, (255, 255, 255))
         bg.paste(im, mask=im.split()[-1])
         im = bg
     else:
         im = im.convert("RGB")
-    fname = uuid.uuid4().hex + ".jpg"  # имя генерируем сами
+    fname = uuid.uuid4().hex + ".jpg" 
     im.save(os.path.join(directory, fname), "JPEG", quality=85)
     im.close()
     return fname
@@ -110,21 +109,20 @@ def save_video(file: UploadFile, directory: str = POSTPICS_DIR) -> str:
     if ext not in ALLOWED_VIDEO:
         raise ValueError("Видео: только .mp4, .webm или .mov")
     size = file.size
-    if size is None:  # на случай старой версии Starlette
+    if size is None: 
         file.file.seek(0, os.SEEK_END)
         size = file.file.tell()
         file.file.seek(0)
     if size > MAX_VIDEO_SIZE:
         raise ValueError("Видео больше 50 МБ")
-    fname = uuid.uuid4().hex + ext  # имя генерирует сервер
+    fname = uuid.uuid4().hex + ext  
     with open(os.path.join(directory, fname), "wb") as out:
         file.file.seek(0)
         shutil.copyfileobj(file.file, out)
     return fname
 
 
-# ==================== ПОСТЫ ====================
-
+#ПОСТЫ
 def get_posts() -> pd.DataFrame:
     seed = pd.DataFrame([
         {"id": 1, "username": "admin",
@@ -141,7 +139,7 @@ def get_posts() -> pd.DataFrame:
     except pd.errors.ParserError:
         seed.to_csv(POSTS_FILE, index=False, encoding="utf-8")
         df = pd.read_csv(POSTS_FILE)
-    if "image" not in df.columns:  # миграции старых файлов
+    if "image" not in df.columns:  
         df["image"] = ""
         df.to_csv(POSTS_FILE, index=False, encoding="utf-8")
     if "video" not in df.columns:
@@ -169,7 +167,7 @@ def add_post(username: str, text: str, image: str = "", video: str = "") -> None
     row.to_csv(POSTS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 
-# ==================== КОММЕНТАРИИ ====================
+#КОММЕНТАРИИ
 
 def get_comments() -> pd.DataFrame:
     if not os.path.exists(COMMENTS_FILE) or os.path.getsize(COMMENTS_FILE) == 0:
@@ -200,12 +198,9 @@ def add_comment(post_id: int, username: str, text: str) -> None:
     row.to_csv(COMMENTS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 
-# ==================== ПРИЛОЖЕНИЕ ====================
+# ПРИЛОЖЕНИЕ
 
 app = FastAPI()
-# ВНИМАНИЕ: https_only=True не даёт куке сохраниться по http.
-# Если после логина видишь 403 (особенно по IP, а не localhost) —
-# поставь https_only=False для локальной разработки.
 app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key",
                    max_age=SESSION_LIFE, https_only=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -237,6 +232,11 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     return HTMLResponse(content=exc.detail, status_code=exc.status_code)
 
 
+def _media_urls(field: str) -> list[str]:
+    """Строка 'имя1;имя2;...' -> список ссылок на файлы поста."""
+    return [f"/static/postpics/{name}" for name in str(field).split(";") if name]
+
+
 @app.get("/", response_class=HTMLResponse)
 def main_page(request: Request):
     return templates.TemplateResponse(request=request, name="based_main.html")
@@ -244,13 +244,12 @@ def main_page(request: Request):
 
 @app.get("/home", response_class=HTMLResponse)
 def home_page(request: Request, username: str = Depends(current_user)):
-    # аватарки всех юзеров (для авторов постов и комментаторов)
     users = get_users()
     users["avatar"] = users["avatar"].fillna("").astype(str)
     avatars = {str(u["username"]): (f"/static/avatars/{u['avatar']}" if u["avatar"] else "")
                for _, u in users.iterrows()}
 
-    # посты (свежие сверху) и комментарии, сгруппированные по post_id
+    
     posts = get_posts().sort_values("id", ascending=False)
     comments = get_comments().sort_values("id")
 
@@ -269,8 +268,8 @@ def home_page(request: Request, username: str = Depends(current_user)):
         "avatar_url": avatars.get(str(p["username"]), ""),
         "text": str(p["text"]),
         "created": str(p["created"]),
-        "image_url": (f"/static/postpics/{p['image']}" if p["image"] else ""),
-        "video_url": (f"/static/postpics/{p['video']}" if p["video"] else ""),
+        "image_urls": _media_urls(p["image"]),   
+        "video_urls": _media_urls(p["video"]),  
         "comments": comments_by_post.get(int(p["id"]), []),
     } for _, p in posts.iterrows()]
 
@@ -280,7 +279,7 @@ def home_page(request: Request, username: str = Depends(current_user)):
             "username": username,
             "avatar_url": avatars.get(username, ""),
             "posts": feed,
-            "error": request.session.pop("error", None),  # ошибка загрузки файла (если была)
+            "error": request.session.pop("error", None), 
         },
     )
 
@@ -353,23 +352,29 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 
 @app.post("/post")
 def create_post(request: Request, text: str = Form(...),
-                media: UploadFile | None = File(None),
+                media: list[UploadFile] = File([]),   # несколько файлов за раз
                 username: str = Depends(current_user)):
-    media_image, media_video = "", ""
-    if media is not None and media.filename:
-        ext = os.path.splitext(media.filename or "")[1].lower()
+    files = [f for f in (media or []) if f and f.filename]
+    if len(files) > MAX_MEDIA_PER_POST:
+        request.session["error"] = f"Не больше {MAX_MEDIA_PER_POST} файлов в одном посте"
+        return RedirectResponse("/home", status_code=303)
+
+    images, videos = [], []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
         try:
             if ext in ALLOWED_VIDEO:
-                media_video = save_video(media)                  # это видео
+                videos.append(save_video(f))                   
             elif ext in ALLOVED_PICTURE:
-                media_image = save_avatar(media, POSTPICS_DIR)   # это фото
+                images.append(save_avatar(f, POSTPICS_DIR))    
             else:
                 raise ValueError("Можно приложить фото (.png/.jpg/.webp) или видео (.mp4/.webm/.mov)")
         except ValueError as e:
             request.session["error"] = str(e)
             return RedirectResponse("/home", status_code=303)
-    if text.strip() or media_image or media_video:
-        add_post(username, text, media_image, media_video)
+
+    if text.strip() or images or videos:
+        add_post(username, text, ";".join(images), ";".join(videos))
     return RedirectResponse("/home", status_code=303)
 
 
