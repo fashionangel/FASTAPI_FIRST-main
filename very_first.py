@@ -171,13 +171,11 @@ def add_post(username: str, text: str, image: str = "", video: str = "") -> None
 
 def get_comments() -> pd.DataFrame:
     if not os.path.exists(COMMENTS_FILE) or os.path.getsize(COMMENTS_FILE) == 0:
-        pd.DataFrame(columns=["id", "post_id", "username", "text", "created"]
-                     ).to_csv(COMMENTS_FILE, index=False, encoding="utf-8")
+        pd.DataFrame(columns=["id", "post_id", "username", "text", "created"]).to_csv(COMMENTS_FILE, index=False, encoding="utf-8")
     try:
         df = pd.read_csv(COMMENTS_FILE)
     except pd.errors.ParserError:
-        pd.DataFrame(columns=["id", "post_id", "username", "text", "created"]
-                     ).to_csv(COMMENTS_FILE, index=False, encoding="utf-8")
+        pd.DataFrame(columns=["id", "post_id", "username", "text", "created"]).to_csv(COMMENTS_FILE, index=False, encoding="utf-8")
         df = pd.read_csv(COMMENTS_FILE)
     df["username"] = df["username"].fillna("").astype(str)
     df["text"] = df["text"].fillna("").astype(str)
@@ -201,8 +199,7 @@ def add_comment(post_id: int, username: str, text: str) -> None:
 # ПРИЛОЖЕНИЕ
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key",
-                   max_age=SESSION_LIFE, https_only=True)
+app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key", max_age=SESSION_LIFE, https_only=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
