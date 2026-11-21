@@ -30,6 +30,9 @@
             <input type="password" name="password" required
                    autocomplete="current-password" placeholder="введите пароль">
         </label>
+
+        {% include "_krivocaptcha.html" %}
+
         <button class="btn wide" type="submit">Войти</button>
     </form>
 

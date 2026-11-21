@@ -1,7 +1,7 @@
 import os
 import time
-import uuid  
-import shutil  
+import uuid
+import shutil
 import hashlib
 from datetime import datetime
 import pandas as pd
@@ -12,24 +12,26 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import FastAPI, Form, Request, HTTPException, status, Depends, File, UploadFile
 
+import krivocaptcha  # упоротая капча «Чекбокс-непоседа»
+
 SESSION_LIFE = 3600
 USERS_FILE = "krivousers.csv"
-POSTS_FILE = "krivoposts.csv"        
-COMMENTS_FILE = "krivocomments.csv"  
+POSTS_FILE = "krivoposts.csv"
+COMMENTS_FILE = "krivocomments.csv"
 ALLOVED_PICTURE = {".png", ".jpeg", ".webp", ".jpg"}
 ALLOWED_VIDEO = {".mp4", ".webm", ".mov"}
 
 
 AVATAR_DIR = os.path.join("static", "avatars")
 POSTPICS_DIR = os.path.join("static", "postpics")
-MAX_AVATAR_SIZE = 2 * 1024 * 1024   
-MAX_VIDEO_SIZE = 50 * 1024 * 1024   
-MAX_MEDIA_PER_POST = 5             
+MAX_AVATAR_SIZE = 2 * 1024 * 1024
+MAX_VIDEO_SIZE = 50 * 1024 * 1024
+MAX_MEDIA_PER_POST = 5
 os.makedirs(AVATAR_DIR, exist_ok=True)
 os.makedirs(POSTPICS_DIR, exist_ok=True)
 
 
-#ПОЛЬЗОВАТЕЛИ
+# ПОЛЬЗОВАТЕЛИ
 
 def hash_password(password: str, salt: str = "") -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
@@ -55,12 +57,12 @@ def get_users() -> pd.DataFrame:
     except pd.errors.ParserError:
         _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
         return pd.read_csv(USERS_FILE)
-    if "password_hash" not in df.columns: 
+    if "password_hash" not in df.columns:
         _admin_row().to_csv(USERS_FILE, index=False, encoding="utf-8")
         df = pd.read_csv(USERS_FILE)
     if "avatar" not in df.columns:
         df["avatar"] = ""
-    df["avatar"] = df["avatar"].fillna("").astype(str) 
+    df["avatar"] = df["avatar"].fillna("").astype(str)
     return df
 
 
@@ -74,7 +76,7 @@ def add_user(username: str, password: str, avatar: str = "") -> None:
     row.to_csv(USERS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 
-#КАРТИНКИ И ВИДЕО
+# КАРТИНКИ И ВИДЕО
 
 def save_avatar(file: UploadFile, directory: str = AVATAR_DIR) -> str:
     """Сохраняет картинку (аватарку или фото к посту)."""
@@ -85,19 +87,19 @@ def save_avatar(file: UploadFile, directory: str = AVATAR_DIR) -> str:
         raise ValueError("Файл больше 2 МБ")
     try:
         im = Image.open(file.file)
-        im.verify()           
-        file.file.seek(0)     
+        im.verify()
+        file.file.seek(0)
         im = Image.open(file.file)
     except Exception:
         raise ValueError("Это не картинка")
-    if im.mode in ("RGBA", "LA", "P"): 
+    if im.mode in ("RGBA", "LA", "P"):
         im = im.convert("RGBA")
         bg = Image.new("RGB", im.size, (255, 255, 255))
         bg.paste(im, mask=im.split()[-1])
         im = bg
     else:
         im = im.convert("RGB")
-    fname = uuid.uuid4().hex + ".jpg" 
+    fname = uuid.uuid4().hex + ".jpg"
     im.save(os.path.join(directory, fname), "JPEG", quality=85)
     im.close()
     return fname
@@ -109,20 +111,21 @@ def save_video(file: UploadFile, directory: str = POSTPICS_DIR) -> str:
     if ext not in ALLOWED_VIDEO:
         raise ValueError("Видео: только .mp4, .webm или .mov")
     size = file.size
-    if size is None: 
+    if size is None:
         file.file.seek(0, os.SEEK_END)
         size = file.file.tell()
         file.file.seek(0)
     if size > MAX_VIDEO_SIZE:
         raise ValueError("Видео больше 50 МБ")
-    fname = uuid.uuid4().hex + ext  
+    fname = uuid.uuid4().hex + ext
     with open(os.path.join(directory, fname), "wb") as out:
         file.file.seek(0)
         shutil.copyfileobj(file.file, out)
     return fname
 
 
-#ПОСТЫ
+# ПОСТЫ
+
 def get_posts() -> pd.DataFrame:
     seed = pd.DataFrame([
         {"id": 1, "username": "admin",
@@ -139,7 +142,7 @@ def get_posts() -> pd.DataFrame:
     except pd.errors.ParserError:
         seed.to_csv(POSTS_FILE, index=False, encoding="utf-8")
         df = pd.read_csv(POSTS_FILE)
-    if "image" not in df.columns:  
+    if "image" not in df.columns:
         df["image"] = ""
         df.to_csv(POSTS_FILE, index=False, encoding="utf-8")
     if "video" not in df.columns:
@@ -167,7 +170,7 @@ def add_post(username: str, text: str, image: str = "", video: str = "") -> None
     row.to_csv(POSTS_FILE, mode="a", index=False, header=header, encoding="utf-8")
 
 
-#КОММЕНТАРИИ
+# КОММЕНТАРИИ
 
 def get_comments() -> pd.DataFrame:
     if not os.path.exists(COMMENTS_FILE) or os.path.getsize(COMMENTS_FILE) == 0:
@@ -202,6 +205,7 @@ app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="super-krivo-secret-key", max_age=SESSION_LIFE, https_only=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+app.include_router(krivocaptcha.router)
 
 
 def current_user(request: Request) -> str:
@@ -246,7 +250,6 @@ def home_page(request: Request, username: str = Depends(current_user)):
     avatars = {str(u["username"]): (f"/static/avatars/{u['avatar']}" if u["avatar"] else "")
                for _, u in users.iterrows()}
 
-    
     posts = get_posts().sort_values("id", ascending=False)
     comments = get_comments().sort_values("id")
 
@@ -265,8 +268,8 @@ def home_page(request: Request, username: str = Depends(current_user)):
         "avatar_url": avatars.get(str(p["username"]), ""),
         "text": str(p["text"]),
         "created": str(p["created"]),
-        "image_urls": _media_urls(p["image"]),   
-        "video_urls": _media_urls(p["video"]),  
+        "image_urls": _media_urls(p["image"]),
+        "video_urls": _media_urls(p["video"]),
         "comments": comments_by_post.get(int(p["id"]), []),
     } for _, p in posts.iterrows()]
 
@@ -276,7 +279,7 @@ def home_page(request: Request, username: str = Depends(current_user)):
             "username": username,
             "avatar_url": avatars.get(username, ""),
             "posts": feed,
-            "error": request.session.pop("error", None), 
+            "error": request.session.pop("error", None),
         },
     )
 
@@ -291,6 +294,7 @@ def register(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    captcha_token: str = Form(""),
     avatar: UploadFile | None = File(None),
 ):
     df = get_users()
@@ -300,6 +304,15 @@ def register(
             request=request,
             name="register.html",
             context={"error": "Логин и пароль не могут быть пустыми"},
+        )
+    if not krivocaptcha.verify(request, captcha_token, consume=True):
+        return templates.TemplateResponse(
+            request=request,
+            name="register.html",
+            context={
+                "error": "Чекбокс не пойман. Сертификат человечности просрочен или выдан не вам.",
+                "username": username,
+            },
         )
     if username in df["username"].astype(str).values:
         return templates.TemplateResponse(
@@ -330,8 +343,18 @@ def login_page(request: Request):
 
 
 @app.post("/login")
-def login(request: Request, username: str = Form(...), password: str = Form(...)):
+def login(request: Request, username: str = Form(...), password: str = Form(...),
+          captcha_token: str = Form("")):
     df = get_users()
+    if not krivocaptcha.verify(request, captcha_token, consume=False):
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": "Без пойманного чекбокса не пустим. Он ждёт вас в форме.",
+                "username": username,
+            },
+        )
     row = df.loc[df["username"] == username]
     if not row.empty:
         stored_hash = str(row.iloc[0]["password_hash"])
@@ -349,7 +372,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 
 @app.post("/post")
 def create_post(request: Request, text: str = Form(...),
-                media: list[UploadFile] = File([]),   # несколько файлов за раз
+                media: list[UploadFile] = File([]),
                 username: str = Depends(current_user)):
     files = [f for f in (media or []) if f and f.filename]
     if len(files) > MAX_MEDIA_PER_POST:
@@ -361,9 +384,9 @@ def create_post(request: Request, text: str = Form(...),
         ext = os.path.splitext(f.filename or "")[1].lower()
         try:
             if ext in ALLOWED_VIDEO:
-                videos.append(save_video(f))                   
+                videos.append(save_video(f))
             elif ext in ALLOVED_PICTURE:
-                images.append(save_avatar(f, POSTPICS_DIR))    
+                images.append(save_avatar(f, POSTPICS_DIR))
             else:
                 raise ValueError("Можно приложить фото (.png/.jpg/.webp) или видео (.mp4/.webm/.mov)")
         except ValueError as e:

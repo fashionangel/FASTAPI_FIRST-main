@@ -34,6 +34,9 @@
             <input type="file" name="avatar" accept=".png,.jpg,.jpeg,.webp">
         </label>
         <p class="note">PNG / JPG / WEBP, до 2 МБ</p>
+
+        {% include "_krivocaptcha.html" %}
+
         <button class="btn wide" type="submit">Зарегистрироваться</button>
     </form>
 
